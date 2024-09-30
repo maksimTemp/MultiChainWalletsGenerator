@@ -1,0 +1,15 @@
+{
+    "GenerateOnlySeedPhrase": true,
+    "InputFilePath": "",
+    "NumberOfWalletsToGenerate": 10,
+    "OutputCsvPath": "output.csv",
+    "OutputJsonPath": "output.json",
+    "GenerateBitcoinTaproot": false,
+    "GenerateEthereum": false,
+    "GenerateSolana": false,
+    "GenerateTron": false,
+    "GenerateTonV4R2": true,
+    "GenerateTonV5R1": true,
+    "GenerateNear": false,
+    "GenerateCosmos": false
+  }
