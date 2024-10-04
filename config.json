@@ -1,7 +1,7 @@
 {
-    "GenerateOnlySeedPhrase": true,
+    "GenerateOnlySeedPhrase": false,
     "InputFilePath": "",
-    "NumberOfWalletsToGenerate": 10,
+    "NumberOfWalletsToGenerate": 1,
     "OutputCsvPath": "output.csv",
     "OutputJsonPath": "output.json",
     "GenerateBitcoinTaproot": false,
