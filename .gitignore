@@ -363,5 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 
 .vscode
-output.json
-output.csv
+_OutputFiles/output.json
+_OutputFiles/output.csv
+_InputFiles/config.json

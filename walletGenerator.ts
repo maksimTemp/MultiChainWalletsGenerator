@@ -1,284 +1,160 @@
-import fs from 'fs';
-import {generateMnemonic, mnemonicToSeed}  from 'bip39';
-import * as bitcoin from 'bitcoinjs-lib';
-import { Keypair, PublicKey } from '@solana/web3.js';
-import TronWeb from 'tronweb';
-import * as nearAPI from 'near-api-js';
-import { DirectSecp256k1HdWallet } from '@cosmjs/proto-signing';
-import { WalletContractV5R1, WalletContractV4 } from "@ton/ton";
-import { mnemonicNew, mnemonicToWalletKey } from "@ton/crypto";
-import HDKey from 'hdkey';
-import BIP32Factory from 'bip32';
-import nacl from 'tweetnacl';
-import { derivePath } from 'ed25519-hd-key';
-import { KeyPairString } from 'near-api-js/lib/utils';
-import { ethers} from 'ethers';
-import bs58 from 'bs58';
-import * as ecc from 'tiny-secp256k1';
+import { generateMnemonic } from 'bip39';
+import { mnemonicNew } from "@ton/crypto";
+import { WalletConfig } from './types/interfaces';
+import { WalletData } from './models/WalletData';
+import { WalletExporter } from './utils/WalletExporter';
+import { BitcoinGenerator } from './generators/BitcoinGenerator';
+import { EthereumGenerator } from './generators/EthereumGenerator';
+import { SolanaGenerator } from './generators/SolanaGenerator';
+import { TronGenerator } from './generators/TronGenerator';
+import { TonV4Generator, TonV5Generator } from './generators/TonGenerator';
+import { CosmosGenerator } from './generators/CosmosGenerator';
+import { NetworkRegistry } from './types/NetworkRegistry';
+import { SuiGenerator } from './generators/SuiGenerator';
 
-export interface WalletConfig {
-    GenerateOnlySeedPhrase: boolean;
-    InputFilePath: string;
-    NumberOfWalletsToGenerate: number;
-    OutputCsvPath: string;
-    OutputJsonPath: string;
-    GenerateBitcoinTaproot: boolean;
-    GenerateEthereum: boolean;
-    GenerateSolana: boolean;
-    GenerateTron: boolean;
-    GenerateTonV4R2: boolean;
-    GenerateTonV5R1: boolean;
-    GenerateNear: boolean;
-    GenerateCosmos: boolean;
-}
-
-class Wallet {
-    mnemonicPhrase?: string;
-    tonMnemonicPhrase?: string;
-    bitcoinAddress?: string;
-    ethereumAddress?: string;
-    solanaAddress?: string;
-    tonV5R1Address?: string;
-    tonV4R2Address?: string;
-    tronAddress?: string;
-    nearAddress?: string;
-    cosmosAddress?: string;
-}
-
+/**
+ * Main wallet generator class orchestrating the generation process
+ */
 export class WalletGenerator {
-    private config: WalletConfig;
-    private wallets: Wallet[] = [];
-    private tasks: ((wallet: Wallet) => Promise<void>)[] = [];
+    private readonly wallets: WalletData[] = [];
+    private readonly networkRegistry: NetworkRegistry;
 
-    constructor(config: WalletConfig) {
-        this.config = config;
-        this.buildTaskQueue();
+    constructor(private readonly config: WalletConfig) {
+        this.networkRegistry = NetworkRegistry.getInstance();
+        
+        this.networkRegistry.registerNetwork('bitcoin', {
+            name: 'Bitcoin',
+            generator: new BitcoinGenerator()
+        });
+        this.networkRegistry.registerNetwork('ethereum', {
+            name: 'Ethereum',
+            generator: new EthereumGenerator()
+        });
+        this.networkRegistry.registerNetwork('solana', {
+            name: 'Solana',
+            generator: new SolanaGenerator()
+        });
+        this.networkRegistry.registerNetwork('tron', {
+            name: 'Tron',
+            generator: new TronGenerator()
+        });
+        this.networkRegistry.registerNetwork('tonV4R2', {
+            name: 'TonV4',
+            generator: new TonV4Generator()
+        });
+        this.networkRegistry.registerNetwork('tonV5', {
+            name: 'TonV5',
+            generator: new TonV5Generator()
+        });
+        this.networkRegistry.registerNetwork('cosmos', {
+            name: 'Cosmos',
+            generator: new CosmosGenerator()
+        });
+        this.networkRegistry.registerNetwork('sui', {
+            name: 'Sui',
+            generator: new SuiGenerator()
+        });
     }
 
-    private buildTaskQueue(): void {
-        if (this.config.GenerateOnlySeedPhrase) {
-            this.tasks.push((wallet: Wallet) => this.generateMnemonicPhrases(wallet));
-            return;
-        } else {
-            if(
-                this.config.GenerateBitcoinTaproot || 
-                this.config.GenerateEthereum ||
-                this.config.GenerateSolana ||
-                this.config.GenerateTron ||
-                this.config.GenerateCosmos ||
-                this.config.GenerateNear
-            )
-            {
-                this.tasks.push((wallet: Wallet) => this.generateMnemonicPhrases(wallet));
-            }
-
-            if (this.config.GenerateTonV4R2 || this.config.GenerateTonV5R1) {
-                this.tasks.push((wallet: Wallet) => this.generateTonMnemonicPhrases(wallet));
-            }
-
-            const networkTasks = [
-                { condition: this.config.GenerateBitcoinTaproot, task: this.generateBitcoinTaprootAddress },
-                { condition: this.config.GenerateEthereum, task: this.generateEthereumAddress },
-                { condition: this.config.GenerateSolana, task: this.generateSolanaAddress },
-                { condition: this.config.GenerateTron, task: this.generateTronAddress },
-                { condition: this.config.GenerateTonV4R2, task: this.generateTonV4R2Address },
-                { condition: this.config.GenerateTonV5R1, task: this.generateTonV5R1Address },
-                { condition: this.config.GenerateNear, task: this.generateNearAddress },
-                { condition: this.config.GenerateCosmos, task: this.generateCosmosAddress },
-            ];
-
-            for (const { condition, task } of networkTasks) {
-                if (condition) {
-                    this.tasks.push(task.bind(this));
-                }
-            }
-
-        }
-    }
-    async generateWallets(): Promise<void> {
-        for (let i = 0; i < this.config.NumberOfWalletsToGenerate; i++) {
-            let wallet = new Wallet();
-
-            for (let task of this.tasks) {
-                try {
-                    await task(wallet);
-                } catch (error) {
-                    console.error(`Error during task execution for wallet ${i}:`, error);
-                }
-            }
-
-            this.wallets.push(wallet);
-        }
+    public getNetworkKeys(): string[] {
+        return this.networkRegistry.getNetworkKeys();
     }
 
-    async generateMnemonicPhrases(wallet: Wallet): Promise<void> {
-        try {
-            wallet.mnemonicPhrase = await generateMnemonic(256);
-        } catch (error) {
-            console.error('Error generating mnemonic phrase:', error);
-        }
+    /**
+     * Generates a new BIP39 seed phrase
+     */
+    private async generateSeedPhrase(): Promise<string> {
+        return generateMnemonic(256);
     }
 
-    async generateTonMnemonicPhrases(wallet: Wallet): Promise<void> {
-        try {
-            wallet.tonMnemonicPhrase = (await mnemonicNew(24)).join(' ');
-        } catch (error) {
-            console.error('Error generating TON mnemonic phrase:', error);
-        }
+    /**
+     * Generates a new TON seed phrase
+     */
+    private async generateTonSeedPhrase(): Promise<string> {
+        return (await mnemonicNew(24)).join(' ');
     }
 
-    async generateBitcoinTaprootAddress(wallet: Wallet): Promise<void> {
-        try {
-            if (!wallet.mnemonicPhrase) return;  
-            const bip32 = BIP32Factory(ecc);
-            bitcoin.initEccLib(ecc);
-            const seed = await mnemonicToSeed(wallet.mnemonicPhrase);
-            const root = bip32.fromSeed(seed);
-            const path = "m/86'/0'/0'/0/0";
-            const child = root.derivePath(path);
-            const pubKey = child.publicKey;
-            wallet.bitcoinAddress = bitcoin.payments.p2tr({
-                internalPubkey: pubKey.slice(1, 33),
-                network: bitcoin.networks.bitcoin,
-            }).address as string;
-        } catch (error) {
-            console.error('Error generating Bitcoin Taproot address:', error);
-        }
-    }
+    /**
+     * Generates addresses for selected networks
+     */
+    private async generateNetworkAddresses(seedPhrase: string, tonSeedPhrase: string): Promise<Record<string, string>> {
+        const addresses: Record<string, string> = {};
+        const networkConfig = this.config.networks;
 
-    async generateEthereumAddress(wallet: Wallet): Promise<void> {
-        try {
-            if (!wallet.mnemonicPhrase) return;
-            const ethWallet = ethers.Wallet.fromPhrase(wallet.mnemonicPhrase);
-            wallet.ethereumAddress = ethWallet.address;
-        } catch (error) {
-            console.error('Error generating Ethereum address:', error);
-        }
-    }
+        const networkTasks = [
+            { key: 'bitcoin', enabled: networkConfig.bitcoin, phrase: seedPhrase },
+            { key: 'ethereum', enabled: networkConfig.ethereum, phrase: seedPhrase },
+            { key: 'solana', enabled: networkConfig.solana, phrase: seedPhrase },
+            { key: 'tron', enabled: networkConfig.tron, phrase: seedPhrase },
+            { key: 'tonV4R2', enabled: networkConfig.tonV4R2, phrase: tonSeedPhrase },
+            { key: 'tonV5R1', enabled: networkConfig.tonV5R1, phrase: tonSeedPhrase },
+            { key: 'cosmos', enabled: networkConfig.cosmos, phrase: seedPhrase },
+            { key: 'sui', enabled: networkConfig.sui, phrase: seedPhrase },
+        ];
 
-    async generateSolanaAddress(wallet: Wallet): Promise<void> {
-        try {
-            if (!wallet.mnemonicPhrase) return;
-            const seed = await mnemonicToSeed(wallet.mnemonicPhrase);
-            const { key } = derivePath("m/44'/501'/0'/0'", seed.toString('hex'));
-            const keyPair = nacl.sign.keyPair.fromSeed(key);
-            const publicKey = new PublicKey(keyPair.publicKey);
-            wallet.solanaAddress = publicKey.toBase58();
-        } catch (error) {
-            console.error('Error generating Solana address:', error);
-        }
-    }
-
-    async generateTronAddress(wallet: Wallet): Promise<void> {
-        try {
-            if (!wallet.mnemonicPhrase) return;
-            const seed = await mnemonicToSeed(wallet.mnemonicPhrase);
-            const root = HDKey.fromMasterSeed(seed);
-            const derived = root.derive("m/44'/195'/0'/0/0");
-            const tronWeb = new TronWeb.TronWeb({ fullHost: 'https://api.trongrid.io' });
-            wallet.tronAddress = tronWeb.address.fromPrivateKey(derived.privateKey.toString('hex')).toString();
-        } catch (error) {
-            console.error('Error generating TRON address:', error);
-        }
-    }
-
-    async generateTonV4R2Address(wallet: Wallet): Promise<void> {
-        try {
-            if (!wallet.tonMnemonicPhrase) return;
-            const keyPair = await mnemonicToWalletKey(wallet.tonMnemonicPhrase.split(' '));
-            const w4r2Wallet = WalletContractV4.create({ publicKey: keyPair.publicKey, workchain: 0 });
-            wallet.tonV4R2Address = w4r2Wallet.address.toString({ urlSafe: true, bounceable: false, testOnly: false });
-        } catch (error) {
-            console.error('Error generating TON V4R2 address:', error);
-        }
-    }
-
-    async generateTonV5R1Address(wallet: Wallet): Promise<void> {
-        try {
-            if (!wallet.tonMnemonicPhrase) return;
-            const keyPair = await mnemonicToWalletKey(wallet.tonMnemonicPhrase.split(' '));
-            const w5Wallet = WalletContractV5R1.create({ publicKey: keyPair.publicKey, workchain: 0 });
-            wallet.tonV5R1Address = w5Wallet.address.toString({ urlSafe: true, bounceable: false, testOnly: false });
-        } catch (error) {
-            console.error('Error generating TON V5R1 address:', error);
-        }
-    }
-
-    async generateNearAddress(wallet: Wallet): Promise<void> {
-        try {
-            // var seed = await mnemonicToSeed(mnemonic); 
-        // var { key } = derivePath("m/44'/397'/0'/0'", seed.toString('hex')); 
-
-        // var keyPairNacl = nacl.sign.keyPair.fromSeed(key);
-        // var secretKeyBase58 = bs58.encode(Buffer.from(keyPairNacl.secretKey.slice(0, 32)));
-        // var keyPairString: nearAPI.utils.KeyPairString = `ed25519:${secretKeyBase58}`;
-        // var keyPair = nearAPI.KeyPair.fromString(keyPairString);
-        // return keyPair.getPublicKey().toString()
-        wallet.nearAddress = "under development";
-        } catch (error) {
-            console.error('Error generating NEAR address:', error);
-        }
-    }
-
-    async generateCosmosAddress(wallet: Wallet): Promise<void> {
-        try {
-            if (!wallet.mnemonicPhrase) return;
-            const cosmosWallet = await DirectSecp256k1HdWallet.fromMnemonic(wallet.mnemonicPhrase);
-            const [cosmosAccount] = await cosmosWallet.getAccounts();
-            wallet.cosmosAddress = cosmosAccount.address;
-        } catch (error) {
-            console.error('Error generating Cosmos address:', error);
-        }
-    }
-
-    private saveToJson(): void {
-        try {
-            if (this.wallets.length === 0) return;
-            let output: any[];
-
-            if (this.config.GenerateOnlySeedPhrase) {
-                output = this.wallets.map(wallet => ({ mnemonicPhrase: wallet.mnemonicPhrase }));
-            } else {
-                output = this.wallets.map(wallet => {
-                    const filteredWallet: Wallet = {};
-                    for (const [key, value] of Object.entries(wallet)) {
-                        if (value !== undefined) {
-                            filteredWallet[key as keyof Wallet] = value;
-                        }
+        for (const task of networkTasks) {
+            if (task.enabled) {
+                const networkInfo = this.networkRegistry.getNetworks().get(task.key);
+                if (networkInfo) {
+                    try {
+                        addresses[task.key] = await networkInfo.generator.generateAddress(task.phrase);
+                    } catch (error) {
+                        console.error(`Error generating ${task.key} address:`, error);
                     }
-                    return filteredWallet;
-                });
+                }
             }
+        }
 
-            fs.writeFileSync(this.config.OutputJsonPath, JSON.stringify(output, null, 2));
-        } catch (error) {
-            console.error('Error saving to JSON file:', error);
+        return addresses;
+    }
+
+    /**
+     * Generates wallets according to configuration
+     */
+    public async generateWallets(): Promise<void> {
+        for (let i = 0; i < this.config.numberOfWallets; i++) {
+            try {
+                const seedPhrase = await this.generateSeedPhrase();
+                const tonSeedPhrase = await this.generateTonSeedPhrase();
+                
+                const addresses = this.config.generateOnlySeedPhrase
+                    ? {}
+                    : await this.generateNetworkAddresses(seedPhrase, tonSeedPhrase);
+                
+                this.wallets.push(new WalletData(
+                    seedPhrase,
+                    this.config.networks.tonV4R2 || this.config.networks.tonV5R1 ? tonSeedPhrase : undefined,
+                    addresses
+                ));
+            } catch (error) {
+                console.error(`Error generating wallet ${i + 1}:`, error);
+            }
         }
     }
 
-    private saveToCsv(): void {
-        try {
-            if (this.wallets.length === 0) return;
-            const keys = Object.keys(this.wallets[0]).filter(key => this.wallets[0][key as keyof Wallet] !== undefined);
-            const header = keys.join(',') + '\n';
-            const rows = this.wallets.map(wallet => 
-                keys.map(key => wallet[key as keyof Wallet] || '').join(',') + '\n'
-            );
-            fs.writeFileSync(this.config.OutputCsvPath, header + rows.join(''));
-        } catch (error) {
-            console.error('Error saving to CSV file:', error);
-        }
+    /**
+     * Exports generated wallets to specified formats
+     */
+    public exportWallets(): void {
+        if (this.wallets.length === 0) return;
+
+        WalletExporter.exportToJson(this.wallets, this.config.outputPaths.json);
+        WalletExporter.exportToCsv(
+            this.wallets, 
+            this.config.outputPaths.csv, 
+            this.config,
+        );
     }
 
-    async run(): Promise<void> {
+    /**
+     * Main execution method
+     */
+    public async run(): Promise<void> {
         try {
             await this.generateWallets();
-            this.saveToJson();
-            this.saveToCsv();
+            this.exportWallets();
         } catch (error) {
             console.error('Error running wallet generation:', error);
         }
     }
 }
-
-

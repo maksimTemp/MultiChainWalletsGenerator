@@ -1,0 +1,15 @@
+{
+    "InputFilePath": "feature, dont touch it",
+    "OutputCsvPath": "output.csv",
+    "OutputJsonPath": "output.json",
+    "NumberOfWalletsToGenerate": 30,
+    "GenerateOnlySeedPhrase": true,
+    "GenerateBitcoinTaproot": true,
+    "GenerateEthereum": true,
+    "GenerateSolana": true,
+    "GenerateTron": true,
+    "GenerateTonV4R2": false,
+    "GenerateTonV5R1": false,
+    "GenerateCosmos": true,
+    "GenerateSui": true
+  }
