@@ -14,7 +14,7 @@ The **MultiChainWalletsGenerator** project is a tool designed to generate seed p
   - Solana
   - Tron
   - TON (The Open Network)
-  - Near (under development)
+  - SUI
   - Cosmos
 
 - **Flexible Output**: The generated wallets and addresses can be exported to CSV and JSON formats.
@@ -30,13 +30,13 @@ The generation process is controlled via a configuration file, allowing users to
   "NumberOfWalletsToGenerate": 10,
   "OutputCsvPath": "output.csv",
   "OutputJsonPath": "output.json",
-  "GenerateBitcoinTaproot": false,
-  "GenerateEthereum": false,
-  "GenerateSolana": false,
+  "GenerateBitcoin": false,
+  "GenerateEthereum": true,
+  "GenerateSolana": true,
   "GenerateTron": false,
-  "GenerateTonV4R2": true,
-  "GenerateTonV5R1": true,
-  "GenerateNear": false,
+  "GenerateTonV4R2": false,
+  "GenerateTonV5R1": false,
+  "GenerateSui": false,
   "GenerateCosmos": false
 }
 ```
@@ -83,9 +83,9 @@ The generation process is controlled via a configuration file, allowing users to
   - `true`: Generates wallet addresses for TON V5R1.
   - `false`: Skips this network's wallet address generation.
 
-- **GenerateNear**: 
-  - `true`: Generates Near wallet addresses.
-  - `false`: Skips Near wallet address generation.
+- **GenerateSui**: 
+  - `true`: Generates Sui wallet addresses.
+  - `false`: Skips Sui wallet address generation.
 
 - **GenerateCosmos**: 
   - `true`: Generates Cosmos wallet address addresses.
@@ -93,13 +93,13 @@ The generation process is controlled via a configuration file, allowing users to
 
 ### Usage
 
-1. **Configure Settings**: Modify the JSON configuration file to specify the desired wallet generation options.
+1. **Configure Settings**: Modify the JSON configuration file (./_InputFiles/config.json) to specify the desired wallet generation options. (u can see example ./_InputFiles/example_config.json)
   
 2. **Run the Generator**: Execute the wallet generator script, and it will generate the wallets based on the configuration provided.
 
 3. **Output**: The generated wallet addresses and seed phrases will be saved to the specified CSV or JSON file paths.
 
-### Example
+### Examples
 
 Here's an example of a simple configuration that generates 5 TON V4R2 and V5R1 wallets:
 
@@ -116,7 +116,27 @@ Here's an example of a simple configuration that generates 5 TON V4R2 and V5R1 w
   "GenerateTron": false,
   "GenerateTonV4R2": true,
   "GenerateTonV5R1": true,
-  "GenerateNear": false,
+  "GenerateSui": false,
+  "GenerateCosmos": false
+}
+```
+
+Here's an example of a simple configuration that generates 10 EVM, Solana and SUI wallets:
+
+```json
+{
+  "GenerateOnlySeedPhrase": false,
+  "InputFilePath": "",
+  "NumberOfWalletsToGenerate": 10,
+  "OutputCsvPath": "output.csv",
+  "OutputJsonPath": "output.json",
+  "GenerateBitcoinTaproot": false,
+  "GenerateEthereum": true,
+  "GenerateSolana": true,
+  "GenerateTron": false,
+  "GenerateTonV4R2": false,
+  "GenerateTonV5R1": false,
+  "GenerateSui": true,
   "GenerateCosmos": false
 }
 ```
